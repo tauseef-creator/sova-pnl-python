@@ -6,6 +6,7 @@ from covalent import CovalentClient
 from decimal import Decimal
 from covalent.services.balance_service import BalancesResponse, BalanceItem
 from covalent.services.util.api_helper import Response
+from covalent.services.transaction_service import TransactionsResponse
 
 from covalent.services.balance_service import Erc20TransfersResponse, BlockTransactionWithContractTransfers
 from datetime import datetime
@@ -17,7 +18,7 @@ API_KEY = "cqt_rQRKdJKWqr888G3hK6bHcHXFGwf3"  # Replace
 QUOTE_CURRENCY = "USD"             # Fiat for prices
 CHAINS = ["eth-mainnet"]           # List of chains (multi-chain support)
 WALLETS = [                        # List for multi-wallet
-    "0x00000000219ab540356cBB839Cbe05303d7705Fa"             # Add more
+    "0xf29C6705F188526E0029A92EE6bc21Ebc750b675"             # Add more
 ]
 INCLUDE_NFTS = False               # Set True for NFTs
 NO_SPAM = True                     # Filter spam
@@ -70,32 +71,42 @@ def fetch_balances(wallet: str, chain: str) -> Dict:
         'assets': assets
     }
 
-def fetch_native_transfers(
-    chain: str,
-    wallet: str,
-    page_size: int = 100
-) -> List[Dict[str, Any]]:
+
+import time
+from typing import List, Dict, Any
+
+def fetch_native_transfers(chain: str, wallet: str, max_pages: int = 1000) -> List[Dict[str, Any]]:
     """
-    Fetch ALL native token (ETH, BNB, etc.) transfers using paginated v3 endpoint.
+    Fetch ALL native transfers with FULL logging.
     """
     transfers = []
-    page = 0
+    page_count = 0
+    total_start = time.time()
+
+    print(f"[NATIVE] Starting fetch for {wallet} on {chain}...")
+
+    # Initial page
+    resp = client.transaction_service.get_transactions_for_address_v3(
+        chain_name=chain,
+        wallet_address=wallet,
+        page=0,
+        quote_currency=QUOTE_CURRENCY,
+        no_logs=True,
+        with_safe=False
+    )
+
+    if resp.error:
+        print(f"[ERROR] Initial page failed: {resp.error_message}")
+        return []
+
+    data: TransactionsResponse = resp.data
+    page_count += 1
 
     while True:
-        resp = client.transaction_service.get_transactions_for_address_v3(
-            chain_name=chain,
-            wallet_address=wallet,
-            page=page,
-            quote_currency=QUOTE_CURRENCY,
-            no_logs=True,  # Skip logs to reduce payload
-            with_safe=False
-        )
+        page_start = time.time()
+        new_transfers = 0
 
-        if resp.error:
-            print(f"Warning: Native tx page {page} failed: {resp.error_message}")
-            break
-
-        data = resp.data
+        print(f"[NATIVE] Page {data.current_page:3d} | Items: {len(data.items):3d} | ", end="")
 
         for tx in data.items:
             if tx.value is None or tx.value <= 0:
@@ -113,14 +124,47 @@ def fetch_native_transfers(
                 'gas_quote': tx.gas_quote or 0.0,
                 'decimals': 18
             })
+            new_transfers += 1
 
-        # Check pagination
-        if not data.pagination or not data.pagination.has_more:
+        page_time = time.time() - page_start
+        print(f"Added: {new_transfers:3d} | Time: {page_time:.2f}s")
+
+        # Stop conditions
+        if data.links.next is None:
+            print(f"[NATIVE] No more pages. Total pages: {page_count}, transfers: {len(transfers)}")
             break
-        page += 1
 
+        if page_count >= max_pages:
+            print(f"[NATIVE] Reached max_pages ({max_pages}). Stopping.")
+            break
+
+        # Fetch next page
+        print(f"[NATIVE] Fetching next page...", end="")
+        next_start = time.time()
+        next_resp = data.next()
+        fetch_time = time.time() - next_start
+        print(f" {fetch_time:.2f}s")
+
+        if next_resp.error:
+            if next_resp.error_code == 429:
+                print("[RATE LIMITED] Waiting 60s...")
+                time.sleep(60)
+                continue
+            else:
+                print(f"[ERROR] {next_resp.error_message}")
+                break
+
+        data = next_resp.data
+        page_count += 1
+
+        # Rate limiting safety
+        if page_count % 10 == 0:
+            print(f"[SAFETY] Fetched {page_count} pages. Pausing 1s...")
+            time.sleep(1)
+
+    total_time = time.time() - total_start
+    print(f"[NATIVE] DONE. Total transfers: {len(transfers)}, time: {total_time:.1f}s")
     return transfers
-
 
 def fetch_token_transfers(
     chain: str,
