@@ -3,7 +3,7 @@ Core PNL Calculation Engine with comprehensive validation and error handling.
 """
 
 from typing import List
-from types import TokenAsset, TokenTransfer, TokenPNL, FIFOPosition
+from pnl_types import TokenAsset, TokenTransfer, TokenPNL, FIFOPosition
 from utils import (
     format_balance,
     calculate_roi,

@@ -23,7 +23,7 @@ Usage:
 """
 
 from typing import List
-from types import WalletPNL, TokenPNL
+from pnl_types import WalletPNL, TokenPNL
 from config import Config
 from api_client import CovalentAPIClient
 from pnl_engine import PNLCalculator

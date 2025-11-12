@@ -9,7 +9,7 @@ from covalent.services.balance_service import BalancesResponse, Erc20TransfersRe
 from covalent.services.transaction_service import TransactionsResponse
 from covalent.services.util.api_helper import Response
 
-from types import TokenAsset, WalletBalances, TokenTransfer
+from pnl_types import TokenAsset, WalletBalances, TokenTransfer
 from utils import format_balance, is_address_equal
 from config import Config
 
